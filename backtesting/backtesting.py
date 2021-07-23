@@ -17,6 +17,7 @@ from itertools import repeat, product, chain, compress
 from math import copysign
 from numbers import Number
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+import backtrader as bt
 
 import numpy as np
 import pandas as pd
@@ -967,6 +968,40 @@ class _Broker:
             trade.sl = sl
 
 
+class MyStrategy(bt.Strategy):
+    global bt, indicators_class, action_class, action_funcs, Strategy
+    params = (('ind', ['sma','bollinger']), ('doji', True),)
+    INDS = ['sma','macd','bollinger']
+
+    def __init__(self):
+        global bt, indicators_class, action_class, action_funcs, Strategy
+
+        self.actions = []
+        self.funcs = []
+        self.indicators = {}
+
+        s = Strategy.objects.first()
+        indicators = s.indicator_set.all()
+        
+        for ind in indicators:
+            indicator = ind(self.data, **ind.get_setup())
+            indicator = getattr(indicator, ind.line)
+            self.indicators[ind.id] = indicator
+
+            if ind.value_type == 'candle':
+                line2 = getattr(self.data, ind.value)
+            elif ind.value_type == 'num':
+                line2 = int(ind.value)
+            elif ind.value_type == 'indicator':
+                line2 = self.indicators[int(ind.value)]
+            
+            self.actions.append(line2)
+            self.funcs.append(ind)
+
+        self.length = len(self.actions)
+
+
+
 class Backtest:
     """
     Backtest a particular (parameterized) strategy
@@ -1043,6 +1078,8 @@ class Backtest:
                             'entry order price')
 
         data = data.copy(deep=False)
+
+        strategy = MyStrategy()
 
         # Convert index to datetime index
         if (not isinstance(data.index, pd.DatetimeIndex) and
